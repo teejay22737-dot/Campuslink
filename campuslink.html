@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CampusLink – Students helping students</title>
+
+  <!-- Fonts (the site falls back to system fonts if these fail to load) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="campuslink.css">
+</head>
+
+<body>
+
+  <!-- ===== Header / navigation ===== -->
+  <header>
+    <div class="wrap">
+      <a class="logo" href="#top">Campus<span>Link</span></a>
+
+      <nav aria-label="Main">
+        <a class="hide" href="#board">Browse</a>
+        <a class="hide" href="#how">How it works</a>
+        <a class="hide" href="#safety">Stay safe</a>
+        <button class="btn gold" data-post="offer">Post</button>
+      </nav>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ===== Hero ===== -->
+    <div class="hero">
+      <div class="wrap">
+        <div>
+          <h1>Need a hand on campus? Someone here has it covered.</h1>
+          <p>
+            CampusLink connects students who need a service with students who can do it.
+            Find a tutor, a designer, a barber or a runner in your own university,
+            or post what you can offer.
+          </p>
+          <div class="cta">
+            <a class="btn gold btn-link" href="#board">Find a service</a>
+            <button class="btn ghost" data-post="offer">Offer a service</button>
+          </div>
+        </div>
+
+        <!-- Decorative pinned cards -->
+        <div class="pins" aria-hidden="true">
+          <div class="pin offer">
+            <b>Calculus tutoring</b>
+            <small>Ada, 300L Engineering</small>
+          </div>
+          <div class="pin request">
+            <b>Need a poster for our society event</b>
+            <small>Tobi, 200L Mass Comm</small>
+          </div>
+          <div class="pin match">Matched. Chat and agree a time.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== The board (listings) ===== -->
+    <section id="board">
+      <div class="wrap">
+        <h2>The board</h2>
+        <p class="sub">
+          Blue cards are students offering a service. Gold cards are students asking for one.
+          Filter, search, or add your own.
+        </p>
+
+        <div class="tools">
+          <input class="search" id="q" type="search"
+                 placeholder="Search tutoring, braiding, laptop repair..."
+                 aria-label="Search listings">
+
+          <div class="seg" role="group" aria-label="Listing type">
+            <button data-type="all" aria-pressed="true">All</button>
+            <button data-type="offer" aria-pressed="false">Offers</button>
+            <button data-type="request" aria-pressed="false">Requests</button>
+          </div>
+
+          <button class="btn" data-post="request">I need something</button>
+        </div>
+
+        <!-- Category chips and listing cards are filled in by script.js -->
+        <div class="chips" id="chips" role="group" aria-label="Categories"></div>
+        <div class="grid" id="grid" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- ===== How it works ===== -->
+    <section id="how" class="band">
+      <div class="wrap">
+        <h2>How it works</h2>
+        <p class="sub">Three steps from a problem to a solved problem.</p>
+
+        <ol class="steps">
+          <li>
+            <h3>Post or browse</h3>
+            <p>Offer a skill you have, or describe what you need. Browse the board by category.</p>
+          </li>
+          <li>
+            <h3>Connect</h3>
+            <p>Tap Contact on a card to see how to reach the student. Agree on scope and price up front.</p>
+          </li>
+          <li>
+            <h3>Get it done</h3>
+            <p>Meet on campus, deliver the work, and pay as agreed. Then help the next person.</p>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===== Safety tips ===== -->
+    <section id="safety">
+      <div class="wrap">
+        <div class="safe">
+          <h2>Stay safe</h2>
+          <ul>
+            <li>Meet in public campus spots like the library, cafeteria or department lobby.</li>
+            <li>Agree on price and deliverables in writing before work starts.</li>
+            <li>For large jobs, pay in stages instead of everything upfront.</li>
+            <li>Never share passwords, ID numbers or card details.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== Footer ===== -->
+  <footer>
+    <div class="wrap">
+      <div>
+        <a class="logo" href="#top">Campus<span>Link</span></a>
+        <p>Built by a student, for students.</p>
+      </div>
+      <p></p>
+    </div>
+  </footer>
+
+  <!-- ===== Post-a-listing dialog ===== -->
+  <dialog id="dlg">
+    <form id="f" method="dialog">
+      <h2 id="dt">Post a listing</h2>
+
+      <label>
+        I want to
+        <select name="type" id="ft">
+          <option value="offer">Offer a service</option>
+          <option value="request">Request a service</option>
+        </select>
+      </label>
+
+      <label>
+        Title
+        <input name="title" required maxlength="70" placeholder="e.g. Chemistry tutoring for 100L">
+      </label>
+
+      <label>
+        Category
+        <select name="cat" id="fc" required></select>
+      </label>
+
+      <label>
+        Details
+        <textarea name="desc" required maxlength="220" rows="3"
+                  placeholder="What you offer or need, and when."></textarea>
+      </label>
+
+      <div class="row">
+        <label>
+          Your name
+          <input name="name" required maxlength="30">
+        </label>
+        <label>
+          University
+          <input name="uni" required maxlength="40">
+        </label>
+      </div>
+
+      <div class="row">
+        <label>
+          Price
+          <input name="price" required maxlength="30" placeholder="e.g. 3,000 per hour or Negotiable">
+        </label>
+        <label>
+          WhatsApp number or email
+          <input name="contact" required maxlength="50" placeholder="+234 803 000 0000 or you@email.com">
+        </label>
+      </div>
+
+      <div class="acts">
+        <button type="button" class="btn ghost" id="cancel">Cancel</button>
+        <button type="submit" class="btn">Publish listing</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- Small confirmation message shown at the bottom of the screen -->
+  <div id="toast" role="status"></div>
+
+  <script src="campuslink.js"></script>
+</body>
+
+</html>
