@@ -17,16 +17,6 @@ var CATEGORIES = [
 // ---------- State ----------
 var SEED = [
   {
-    type: "offer",
-    cat: "Tutoring",
-    title: "Calculus and physics tutoring",
-    desc: "Weekly small-group sessions with worked past questions. Weekday evenings.",
-    name: "Ada O.",
-    uni: "Engineering, 400L",
-    price: "2,500 per hour",
-    contact: "ada.tutor@example.com"
-  },
-  {
     type: "request",
     cat: "Design & Tech",
     title: "Poster and flyer for society week",
@@ -46,56 +36,6 @@ var SEED = [
     price: "From 4,000",
     contact: "emeka.fix@example.com"
   },
-  {
-    type: "offer",
-    cat: "Beauty & Fashion",
-    title: "Braiding and hair styling",
-    desc: "Book a slot at the female hostel common room. Bring your own extensions or I can source.",
-    name: "Zainab K.",
-    uni: "Nursing, 200L",
-    price: "From 5,000",
-    contact: "08000000002"
-  },
-  {
-    type: "request",
-    cat: "Writing & Typing",
-    title: "Someone to type and format my project",
-    desc: "60 pages handwritten, need typing, referencing and a clean PDF.",
-    name: "Chidi E.",
-    uni: "Economics, 400L",
-    price: "Negotiable",
-    contact: "chidi.e@example.com"
-  },
-  {
-    type: "offer",
-    cat: "Food & Delivery",
-    title: "Meal prep and hostel delivery",
-    desc: "Jollof, stew and snacks. Order before 11am for a 1pm delivery to any hostel.",
-    name: "Ife B.",
-    uni: "Food Science, 300L",
-    price: "From 1,800 per plate",
-    contact: "08000000003"
-  },
-  {
-    type: "request",
-    cat: "Errands",
-    title: "Pick up printed materials from town",
-    desc: "Need someone going off campus on Saturday to collect a parcel.",
-    name: "Sam D.",
-    uni: "Law, 100L",
-    price: "1,500",
-    contact: "sam.d@example.com"
-  },
-  {
-    type: "offer",
-    cat: "Design & Tech",
-    title: "Website and slide deck help",
-    desc: "Portfolio sites, final year defence slides and CVs. Fast turnaround.",
-    name: "Kelvin M.",
-    uni: "Computer Science, 400L",
-    price: "From 6,000",
-    contact: "kelvin.dev@example.com"
-  }
 ];
 
 // Current filters chosen by the visitor
