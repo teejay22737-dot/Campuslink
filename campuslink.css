@@ -584,3 +584,105 @@ textarea {
 .contact-text {
   font-weight: 700;
 }
+
+/* Likes and reviews */
+.engage {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.like-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 2px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-weight: 700;
+}
+
+.like-btn span {
+  font-size: 1.05rem;
+}
+
+.like-btn[aria-pressed="true"] {
+  border-color: #E0245E;
+  color: #E0245E;
+}
+
+.rating {
+  font-size: .9rem;
+  color: var(--muted);
+}
+
+.rating:not(.muted) {
+  color: var(--gold);
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+.rating.muted {
+  color: var(--muted);
+  font-weight: 400;
+  letter-spacing: normal;
+}
+
+details.reviews {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+details.reviews summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--blue);
+}
+
+.review-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.review {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.review .stars {
+  color: var(--gold);
+  font-size: .85rem;
+}
+
+.review p {
+  margin: 4px 0 0;
+  color: var(--muted);
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.review-form {
+  display: grid;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.review-form .row {
+  grid-template-columns: 1fr 1fr;
+}
+
+.btn.ghost.small {
+  padding: 7px 12px;
+  font-size: .9rem;
+  justify-self: start;
+}
