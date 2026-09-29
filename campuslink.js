@@ -14,9 +14,21 @@ var CATEGORIES = [
   "Errands"
 ];
 
-// ---------- State ----------
+// Sample listings shown on first load. Replace these with real ones.
 var SEED = [
   {
+    id: "s1",
+    type: "offer",
+    cat: "Tutoring",
+    title: "Calculus and physics tutoring",
+    desc: "Weekly small-group sessions with worked past questions. Weekday evenings.",
+    name: "Ada O.",
+    uni: "Engineering, 400L",
+    price: "2,500 per hour",
+    contact: "ada.tutor@example.com"
+  },
+  {
+    id: "s2",
     type: "request",
     cat: "Design & Tech",
     title: "Poster and flyer for society week",
@@ -26,17 +38,44 @@ var SEED = [
     price: "Budget 8,000",
     contact: "08000000001"
   },
-  {
-    type: "offer",
-    cat: "Repairs",
-    title: "Phone screen and battery fixes",
-    desc: "Same-day repairs for common phones. Hostel pickup available on request.",
-    name: "Emeka N.",
-    uni: "Electrical Eng, 300L",
-    price: "From 4,000",
-    contact: "emeka.fix@example.com"
-  },
 ];
+
+// A few starting likes and reviews so the demo doesn't look empty.
+// Real listings (posted through the form) start with none of these.
+var SEED_ENGAGEMENT = {
+  s1: {
+    likes: 14,
+    reviews: [
+      { name: "Femi O.", rating: 5, text: "Explained limits way better than my lecturer. Booking again." },
+      { name: "Grace T.", rating: 4, text: "Very patient, only wish sessions were longer." }
+    ]
+  },
+  s3: {
+    likes: 9,
+    reviews: [
+      { name: "Blessing U.", rating: 5, text: "Fixed my screen in an hour, fair price." }
+    ]
+  },
+  s4: {
+    likes: 21,
+    reviews: [
+      { name: "Aisha M.", rating: 5, text: "Neat cornrows, didn't rush at all." },
+      { name: "Ruth P.", rating: 5, text: "Best braider on campus honestly." }
+    ]
+  },
+  s6: {
+    likes: 17,
+    reviews: [
+      { name: "David K.", rating: 4, text: "Food is good and delivery was on time." }
+    ]
+  },
+  s8: {
+    likes: 11,
+    reviews: []
+  }
+};
+
+// ---------- State ----------
 
 // Current filters chosen by the visitor
 var filters = { type: "all", cat: "All", q: "" };
@@ -47,6 +86,61 @@ try {
   posts = JSON.parse(localStorage.getItem("cl_posts") || "[]");
 } catch (e) {
   posts = [];
+}
+
+// Likes and reviews added by the visitor, keyed by listing id
+// (loaded from this browser's storage; see SEED_ENGAGEMENT for starting values)
+var engagementStore = {};
+try {
+  engagementStore = JSON.parse(localStorage.getItem("cl_engagement") || "{}");
+} catch (e) {
+  engagementStore = {};
+}
+
+function saveEngagement() {
+  try {
+    localStorage.setItem("cl_engagement", JSON.stringify(engagementStore));
+  } catch (e) {
+    // Storage may be blocked; the change still shows for this visit
+  }
+}
+
+// Gets (or creates) this visitor's stored entry for one listing
+function getEntry(id) {
+  if (!engagementStore[id]) {
+    engagementStore[id] = { likedByMe: false, reviews: [] };
+  }
+  return engagementStore[id];
+}
+
+function getLikeCount(id) {
+  var base = (SEED_ENGAGEMENT[id] && SEED_ENGAGEMENT[id].likes) || 0;
+  var entry = engagementStore[id];
+  return base + (entry && entry.likedByMe ? 1 : 0);
+}
+
+function getReviews(id) {
+  var base = (SEED_ENGAGEMENT[id] && SEED_ENGAGEMENT[id].reviews) || [];
+  var entry = engagementStore[id];
+  return base.concat(entry ? entry.reviews : []);
+}
+
+function getAverageRating(id) {
+  var reviews = getReviews(id);
+  if (!reviews.length) return 0;
+  var total = reviews.reduce(function (sum, review) {
+    return sum + review.rating;
+  }, 0);
+  return total / reviews.length;
+}
+
+function renderStars(rating) {
+  var rounded = Math.round(rating);
+  var stars = "";
+  for (var i = 1; i <= 5; i++) {
+    stars += i <= rounded ? "★" : "☆";
+  }
+  return stars;
 }
 
 // ---------- Helpers ----------
@@ -157,6 +251,59 @@ function renderChips() {
   $("#chips").innerHTML = html;
 }
 
+// Builds the "❤ 12" like button and the reviews <details> block for one listing
+function renderEngagement(post) {
+  var entry = engagementStore[post.id];
+  var liked = !!(entry && entry.likedByMe);
+  var likeCount = getLikeCount(post.id);
+  var reviews = getReviews(post.id);
+  var average = getAverageRating(post.id);
+
+  var ratingSummary = reviews.length
+    ? '<span class="rating">' + renderStars(average) + " (" + reviews.length + ")</span>"
+    : '<span class="rating muted">No reviews yet</span>';
+
+  var reviewList = reviews.length
+    ? reviews.map(function (review) {
+        return (
+          '<li class="review">' +
+            "<b>" + escapeHtml(review.name) + "</b> " +
+            '<span class="stars">' + renderStars(review.rating) + "</span>" +
+            "<p>" + escapeHtml(review.text) + "</p>" +
+          "</li>"
+        );
+      }).join("")
+    : '<p class="muted">Be the first to leave a review.</p>';
+
+  return (
+    '<div class="engage">' +
+      '<button class="like-btn" data-like="' + post.id + '" aria-pressed="' + liked + '">' +
+        '<span aria-hidden="true">' + (liked ? "♥" : "♡") + "</span> " + likeCount +
+      "</button>" +
+      ratingSummary +
+    "</div>" +
+    "<details class=\"reviews\">" +
+      "<summary>Reviews</summary>" +
+      '<ul class="review-list">' + reviewList + "</ul>" +
+      '<form class="review-form" data-review="' + post.id + '">' +
+        '<div class="row">' +
+          '<input name="name" required maxlength="30" placeholder="Your name">' +
+          '<select name="rating" required>' +
+            '<option value="">Rating</option>' +
+            '<option value="5">★★★★★ Excellent</option>' +
+            '<option value="4">★★★★☆ Good</option>' +
+            '<option value="3">★★★☆☆ Okay</option>' +
+            '<option value="2">★★☆☆☆ Poor</option>' +
+            '<option value="1">★☆☆☆☆ Bad</option>' +
+          "</select>" +
+        "</div>" +
+        '<textarea name="text" required maxlength="160" rows="2" placeholder="How did it go?"></textarea>' +
+        '<button type="submit" class="btn ghost small">Post review</button>' +
+      "</form>" +
+    "</details>"
+  );
+}
+
 function renderCard(post) {
   var label = post.type === "offer" ? "Offering" : "Looking for";
 
@@ -170,6 +317,7 @@ function renderCard(post) {
         "<b>" + escapeHtml(post.price) + "</b>" +
       "</div>" +
       '<div class="actions">' + renderContactActions(post) + "</div>" +
+      renderEngagement(post) +
     "</article>"
   );
 }
@@ -222,7 +370,35 @@ document.addEventListener("click", function (event) {
     $("#ft").value = button.dataset.post;
     $("#dt").textContent = isOffer ? "Offer a service" : "Request a service";
     $("#dlg").showModal();
+
+  // Like button on a card
+  } else if (button.dataset.like) {
+    var entry = getEntry(button.dataset.like);
+    entry.likedByMe = !entry.likedByMe;
+    saveEngagement();
+    renderBoard();
   }
+});
+
+// Posting a review (delegated, since review forms are created dynamically)
+document.addEventListener("submit", function (event) {
+  var form = event.target;
+  if (!form.matches || !form.matches(".review-form")) return;
+
+  event.preventDefault();
+  var data = Object.fromEntries(new FormData(form).entries());
+  if (!data.name.trim() || !data.rating || !data.text.trim()) return;
+
+  var entry = getEntry(form.dataset.review);
+  entry.reviews.push({
+    name: data.name.trim(),
+    rating: Number(data.rating),
+    text: data.text.trim()
+  });
+
+  saveEngagement();
+  renderBoard();
+  showToast("Review posted");
 });
 
 // Live search
@@ -241,6 +417,7 @@ $("#f").addEventListener("submit", function (event) {
   event.preventDefault();
 
   var listing = Object.fromEntries(new FormData(event.target).entries());
+  listing.id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   // The contact must be an email address or a phone number, so the links work
   if (!isValidContact(listing.contact)) {
