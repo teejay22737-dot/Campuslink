@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="campuslink.css">
 </head>
 
-<body>
+<body id="top">
 
   <!-- ===== Header / navigation ===== -->
   <header>
@@ -24,12 +24,15 @@
         <a class="hide" href="#board">Browse</a>
         <a class="hide" href="#how">How it works</a>
         <a class="hide" href="#safety">Stay safe</a>
+        <span id="authStatus" class="auth-status is-hidden"></span>
+        <button class="btn ghost is-hidden" id="myProfileBtn">My profile</button>
+        <button class="btn ghost" id="authBtn">Sign in</button>
         <button class="btn gold" data-post="offer">Post</button>
       </nav>
     </div>
   </header>
 
-  <main id="top">
+  <main id="viewHome">
 
     <!-- ===== Hero ===== -->
     <div class="hero">
@@ -131,14 +134,34 @@
 
   </main>
 
+  <!-- ===== Profile page (shown instead of the home view when the URL is #/profile/...) ===== -->
+  <section id="viewProfile" class="is-hidden">
+    <div class="wrap">
+      <a class="back-link" href="#top">← Back to the board</a>
+
+      <div class="profile-head">
+        <img id="profileAvatar" class="avatar" alt="" src="">
+        <div>
+          <h2 id="profileName">—</h2>
+          <p id="profileUni" class="sub"></p>
+          <p id="profileBio"></p>
+          <button type="button" class="btn ghost is-hidden" id="editProfileBtn">Edit profile</button>
+        </div>
+      </div>
+
+      <h3 class="profile-sub">Posts</h3>
+      <div class="grid" id="profileGrid"></div>
+    </div>
+  </section>
+
   <!-- ===== Footer ===== -->
   <footer>
     <div class="wrap">
       <div>
         <a class="logo" href="#top">Campus<span>Link</span></a>
-        <p>Built by a student, for students.</p>
+        <p>Built by students, for students.</p>
       </div>
-      <p></p>
+      <p>Post a service, follow it up in your profile, and everyone sees the same board.</p>
     </div>
   </footer>
 
@@ -195,7 +218,62 @@
 
       <div class="acts">
         <button type="button" class="btn ghost" id="cancel">Cancel</button>
-        <button type="submit" class="btn">Publish listing</button>
+        <button type="submit" class="btn" id="submitBtn">Publish listing</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== Edit profile dialog ===== -->
+  <dialog id="profileDlg">
+    <form id="profileForm">
+      <h2>Edit your profile</h2>
+
+      <label>
+        Profile picture
+        <input type="file" id="avatarInput" accept="image/*">
+      </label>
+      <img id="avatarPreview" class="avatar avatar-preview is-hidden" alt="">
+
+      <label>
+        Display name
+        <input id="profileNameInput" required maxlength="30">
+      </label>
+      <label>
+        University
+        <input id="profileUniInput" maxlength="40">
+      </label>
+      <label>
+        Bio
+        <textarea id="profileBioInput" rows="3" maxlength="200" placeholder="A line about what you offer or study"></textarea>
+      </label>
+
+      <div class="acts">
+        <button type="button" class="btn ghost" id="profileCancel">Cancel</button>
+        <button type="submit" class="btn">Save profile</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="authDlg" aria-label="Sign in">
+    <form id="authForm">
+      <h2>Sign in to post</h2>
+      <p class="sub">One account works on every device, so you can edit your own listings anywhere.</p>
+
+      <label>
+        Email
+        <input type="email" id="authEmail" required>
+      </label>
+      <label>
+        Password
+        <input type="password" id="authPassword" required minlength="6" placeholder="At least 6 characters">
+      </label>
+
+      <p id="authMsg" class="muted"></p>
+
+      <div class="acts">
+        <button type="button" class="btn ghost" id="authCancel">Cancel</button>
+        <button type="button" class="btn ghost" id="authSignUp">Create account</button>
+        <button type="submit" class="btn" id="authSignIn">Sign in</button>
       </div>
     </form>
   </dialog>
@@ -203,6 +281,9 @@
   <!-- Small confirmation message shown at the bottom of the screen -->
   <div id="toast" role="status"></div>
 
+  <!-- Supabase client, then your project keys, then the site's own logic -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
   <script src="campuslink.js"></script>
 </body>
 
