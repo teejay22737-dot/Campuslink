@@ -686,3 +686,166 @@ details.reviews summary {
   font-size: .9rem;
   justify-self: start;
 }
+
+/* Edit / Delete row shown only to the visitor who posted the listing */
+.owner-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.owner-actions .btn {
+  flex: 1 1 auto;
+  text-align: center;
+}
+
+.btn.ghost.small.danger {
+  color: #C0264A;
+  border-color: #C0264A;
+}
+
+/* Sign-in status pill in the header */
+.auth-status {
+  font-size: .85rem;
+  color: #C7D2EE;
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,.25);
+  border-radius: 999px;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+/* Clickable poster name on a card */
+.profile-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+/* Avatars */
+.avatar {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--blue-soft);
+  flex: none;
+}
+
+.avatar-preview {
+  width: 72px;
+  height: 72px;
+  margin: 4px 0;
+}
+
+/* Profile page */
+#viewProfile {
+  padding: 40px 0 64px;
+}
+
+.back-link {
+  display: inline-block;
+  margin-bottom: 20px;
+  color: var(--blue);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.profile-head {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.profile-head h2 {
+  font-size: 1.6rem;
+}
+
+.profile-head .sub {
+  margin: 2px 0 8px;
+}
+
+.profile-sub {
+  margin-bottom: 14px;
+}
+
+/* Comments and replies */
+details.comments-block {
+  border-top: 1px solid var(--line);
+  padding-top: 10px;
+}
+
+details.comments-block summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.comment-list {
+  list-style: none;
+  margin: 10px 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.comment {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.comment p {
+  margin: 2px 0 0;
+  color: var(--muted);
+}
+
+.replies {
+  margin-top: 6px;
+}
+
+.replies summary {
+  cursor: pointer;
+  font-size: .85rem;
+  color: var(--blue);
+}
+
+.reply-list {
+  list-style: none;
+  margin: 8px 0;
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+  display: grid;
+  gap: 6px;
+}
+
+.reply {
+  font-size: .9rem;
+}
+
+.comment-form,
+.reply-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.comment-form input,
+.reply-form input {
+  flex: 1 1 120px;
+  padding: 8px 10px;
+  border: 2px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+}
