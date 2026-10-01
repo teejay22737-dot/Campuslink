@@ -1,8 +1,13 @@
-/* CampusLink – board logic
-   Listings you post are stored in this browser only (localStorage).
-   To share listings between users, replace the storage calls with a real backend. */
+/* CampusLink – board logic (Supabase-backed)
+   Listings, likes and reviews live in a shared Supabase database, so every
+   visitor sees the same data on every device. Set your project keys in
+   config.js and create the tables using schema.sql before this will work. */
 
-// ---------- Data ----------
+// ---------- Supabase client ----------
+
+var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// ---------- Static data ----------
 
 var CATEGORIES = [
   "Tutoring",
@@ -14,134 +19,26 @@ var CATEGORIES = [
   "Errands"
 ];
 
-// Sample listings shown on first load. Replace these with real ones.
-var SEED = [
-  {
-    id: "s1",
-    type: "offer",
-    cat: "Tutoring",
-    title: "Calculus and physics tutoring",
-    desc: "Weekly small-group sessions with worked past questions. Weekday evenings.",
-    name: "Ada O.",
-    uni: "Engineering, 400L",
-    price: "2,500 per hour",
-    contact: "ada.tutor@example.com"
-  },
-  {
-    id: "s2",
-    type: "request",
-    cat: "Design & Tech",
-    title: "Poster and flyer for society week",
-    desc: "Need two A3 posters and a social media flyer by Friday. Brand colours provided.",
-    name: "Tobi A.",
-    uni: "Mass Comm, 200L",
-    price: "Budget 8,000",
-    contact: "08000000001"
-  },
-];
-
-// A few starting likes and reviews so the demo doesn't look empty.
-// Real listings (posted through the form) start with none of these.
-var SEED_ENGAGEMENT = {
-  s1: {
-    likes: 14,
-    reviews: [
-      { name: "Femi O.", rating: 5, text: "Explained limits way better than my lecturer. Booking again." },
-      { name: "Grace T.", rating: 4, text: "Very patient, only wish sessions were longer." }
-    ]
-  },
-  s3: {
-    likes: 9,
-    reviews: [
-      { name: "Blessing U.", rating: 5, text: "Fixed my screen in an hour, fair price." }
-    ]
-  },
-  s4: {
-    likes: 21,
-    reviews: [
-      { name: "Aisha M.", rating: 5, text: "Neat cornrows, didn't rush at all." },
-      { name: "Ruth P.", rating: 5, text: "Best braider on campus honestly." }
-    ]
-  },
-  s6: {
-    likes: 17,
-    reviews: [
-      { name: "David K.", rating: 4, text: "Food is good and delivery was on time." }
-    ]
-  },
-  s8: {
-    likes: 11,
-    reviews: []
-  }
-};
-
 // ---------- State ----------
 
 // Current filters chosen by the visitor
 var filters = { type: "all", cat: "All", q: "" };
 
-// Listings posted by the visitor (loaded from this browser's storage)
-var posts = [];
-try {
-  posts = JSON.parse(localStorage.getItem("cl_posts") || "[]");
-} catch (e) {
-  posts = [];
-}
+// Id of the listing currently being edited in the dialog, or null when posting a new one
+var editingId = null;
 
-// Likes and reviews added by the visitor, keyed by listing id
-// (loaded from this browser's storage; see SEED_ENGAGEMENT for starting values)
-var engagementStore = {};
-try {
-  engagementStore = JSON.parse(localStorage.getItem("cl_engagement") || "{}");
-} catch (e) {
-  engagementStore = {};
-}
+// The signed-in visitor, or null when signed out (set by onAuthStateChange below)
+var currentUser = null;
 
-function saveEngagement() {
-  try {
-    localStorage.setItem("cl_engagement", JSON.stringify(engagementStore));
-  } catch (e) {
-    // Storage may be blocked; the change still shows for this visit
-  }
-}
+// Data loaded from Supabase
+var listings = [];          // rows from the "listings" table
+var likesByListing = {};    // { listingId: [ user_id, user_id, ... ] }
+var reviewsByListing = {};  // { listingId: [ { id, name, rating, text, user_id }, ... ] }
+var commentsByListing = {}; // { listingId: [ { id, parent_id, name, text, user_id }, ... ] }
+var profilesById = {};      // { userId: { id, name, uni, bio, avatar } }
 
-// Gets (or creates) this visitor's stored entry for one listing
-function getEntry(id) {
-  if (!engagementStore[id]) {
-    engagementStore[id] = { likedByMe: false, reviews: [] };
-  }
-  return engagementStore[id];
-}
-
-function getLikeCount(id) {
-  var base = (SEED_ENGAGEMENT[id] && SEED_ENGAGEMENT[id].likes) || 0;
-  var entry = engagementStore[id];
-  return base + (entry && entry.likedByMe ? 1 : 0);
-}
-
-function getReviews(id) {
-  var base = (SEED_ENGAGEMENT[id] && SEED_ENGAGEMENT[id].reviews) || [];
-  var entry = engagementStore[id];
-  return base.concat(entry ? entry.reviews : []);
-}
-
-function getAverageRating(id) {
-  var reviews = getReviews(id);
-  if (!reviews.length) return 0;
-  var total = reviews.reduce(function (sum, review) {
-    return sum + review.rating;
-  }, 0);
-  return total / reviews.length;
-}
-
-function renderStars(rating) {
-  var rounded = Math.round(rating);
-  var stars = "";
-  for (var i = 1; i <= 5; i++) {
-    stars += i <= rounded ? "★" : "☆";
-  }
-  return stars;
-}
+// Which profile page is currently open (from the "#/profile/<id>" URL), or null on the home view
+var viewingProfileId = null;
 
 // ---------- Helpers ----------
 
@@ -165,6 +62,105 @@ function showToast(message) {
     toast.classList.remove("on");
   }, 2400);
 }
+
+// ---------- Auth ----------
+
+function updateAuthUI() {
+  var status = $("#authStatus");
+  var btn = $("#authBtn");
+  var myProfileBtn = $("#myProfileBtn");
+
+  if (currentUser) {
+    status.textContent = currentUser.email;
+    status.classList.remove("is-hidden");
+    btn.textContent = "Sign out";
+    myProfileBtn.classList.remove("is-hidden");
+  } else {
+    status.classList.add("is-hidden");
+    btn.textContent = "Sign in";
+    myProfileBtn.classList.add("is-hidden");
+  }
+}
+
+// Makes sure a signed-in visitor has a profiles row, creating a default one the first time
+async function ensureProfile() {
+  if (!currentUser) return;
+  if (profilesById[currentUser.id]) return;
+
+  var defaultName = currentUser.email.split("@")[0];
+  var result = await supabase.from("profiles").insert({
+    id: currentUser.id,
+    name: defaultName
+  }).select();
+
+  if (!result.error && result.data && result.data[0]) {
+    profilesById[currentUser.id] = result.data[0];
+  }
+}
+
+supabase.auth.onAuthStateChange(async function (event, session) {
+  currentUser = session ? session.user : null;
+  updateAuthUI();
+  if (currentUser) await ensureProfile();
+  renderBoard();
+  if (viewingProfileId) renderProfileView();
+});
+
+$("#authBtn").addEventListener("click", async function () {
+  if (currentUser) {
+    if (confirm("Sign out?")) {
+      await supabase.auth.signOut();
+      showToast("Signed out");
+    }
+  } else {
+    $("#authMsg").textContent = "";
+    $("#authDlg").showModal();
+  }
+});
+
+$("#authCancel").addEventListener("click", function () {
+  $("#authDlg").close();
+});
+
+$("#authForm").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  var email = $("#authEmail").value.trim();
+  var password = $("#authPassword").value;
+
+  $("#authMsg").textContent = "Signing in...";
+  var result = await supabase.auth.signInWithPassword({ email: email, password: password });
+
+  if (result.error) {
+    $("#authMsg").textContent = result.error.message;
+    return;
+  }
+
+  $("#authDlg").close();
+  $("#authForm").reset();
+  showToast("Signed in");
+});
+
+$("#authSignUp").addEventListener("click", async function () {
+  var email = $("#authEmail").value.trim();
+  var password = $("#authPassword").value;
+
+  if (!email || password.length < 6) {
+    $("#authMsg").textContent = "Enter an email and a password of at least 6 characters.";
+    return;
+  }
+
+  $("#authMsg").textContent = "Creating account...";
+  var result = await supabase.auth.signUp({ email: email, password: password });
+
+  if (result.error) {
+    $("#authMsg").textContent = result.error.message;
+    return;
+  }
+
+  // Depending on your Supabase project's auth settings, the visitor may need
+  // to confirm their email before signInWithPassword will work for them.
+  $("#authMsg").textContent = "Account created. Check your email to confirm it, then sign in.";
+});
 
 // ---------- Contact links ----------
 
@@ -236,6 +232,68 @@ function renderContactActions(post) {
   return '<span class="contact-text">' + escapeHtml(contact) + "</span>";
 }
 
+// ---------- Loading data from Supabase ----------
+
+async function loadListings() {
+  var result = await supabase.from("listings").select("*").order("created_at", { ascending: false });
+  if (result.error) {
+    showToast("Couldn't load listings");
+    return;
+  }
+  listings = result.data;
+}
+
+async function loadLikes() {
+  var result = await supabase.from("likes").select("listing_id,user_id");
+  if (result.error) return;
+
+  likesByListing = {};
+  result.data.forEach(function (row) {
+    if (!likesByListing[row.listing_id]) likesByListing[row.listing_id] = [];
+    likesByListing[row.listing_id].push(row.user_id);
+  });
+}
+
+async function loadReviews() {
+  var result = await supabase.from("reviews").select("*").order("created_at", { ascending: true });
+  if (result.error) return;
+
+  reviewsByListing = {};
+  result.data.forEach(function (row) {
+    if (!reviewsByListing[row.listing_id]) reviewsByListing[row.listing_id] = [];
+    reviewsByListing[row.listing_id].push(row);
+  });
+}
+
+async function loadComments() {
+  var result = await supabase.from("comments").select("*").order("created_at", { ascending: true });
+  if (result.error) return;
+
+  commentsByListing = {};
+  result.data.forEach(function (row) {
+    if (!commentsByListing[row.listing_id]) commentsByListing[row.listing_id] = [];
+    commentsByListing[row.listing_id].push(row);
+  });
+}
+
+async function loadProfiles() {
+  var result = await supabase.from("profiles").select("*");
+  if (result.error) return;
+
+  profilesById = {};
+  result.data.forEach(function (row) {
+    profilesById[row.id] = row;
+  });
+}
+
+async function loadAll() {
+  await Promise.all([loadListings(), loadLikes(), loadReviews(), loadComments(), loadProfiles()]);
+  if (currentUser) await ensureProfile();
+  renderChips();
+  renderBoard();
+  if (viewingProfileId) renderProfileView();
+}
+
 // ---------- Rendering ----------
 
 function renderChips() {
@@ -251,13 +309,23 @@ function renderChips() {
   $("#chips").innerHTML = html;
 }
 
+function renderStars(rating) {
+  var rounded = Math.round(rating);
+  var stars = "";
+  for (var i = 1; i <= 5; i++) {
+    stars += i <= rounded ? "★" : "☆";
+  }
+  return stars;
+}
+
 // Builds the "❤ 12" like button and the reviews <details> block for one listing
 function renderEngagement(post) {
-  var entry = engagementStore[post.id];
-  var liked = !!(entry && entry.likedByMe);
-  var likeCount = getLikeCount(post.id);
-  var reviews = getReviews(post.id);
-  var average = getAverageRating(post.id);
+  var likeIds = likesByListing[post.id] || [];
+  var liked = !!(currentUser && likeIds.indexOf(currentUser.id) > -1);
+  var reviews = reviewsByListing[post.id] || [];
+  var average = reviews.length
+    ? reviews.reduce(function (sum, r) { return sum + r.rating; }, 0) / reviews.length
+    : 0;
 
   var ratingSummary = reviews.length
     ? '<span class="rating">' + renderStars(average) + " (" + reviews.length + ")</span>"
@@ -275,61 +343,158 @@ function renderEngagement(post) {
       }).join("")
     : '<p class="muted">Be the first to leave a review.</p>';
 
+  var reviewForm = currentUser
+    ? (
+        '<form class="review-form" data-review="' + post.id + '">' +
+          '<div class="row">' +
+            '<input name="name" required maxlength="30" placeholder="Your name" value="' +
+              escapeHtml(currentUser.email.split("@")[0]) + '">' +
+            '<select name="rating" required>' +
+              '<option value="">Rating</option>' +
+              '<option value="5">★★★★★ Excellent</option>' +
+              '<option value="4">★★★★☆ Good</option>' +
+              '<option value="3">★★★☆☆ Okay</option>' +
+              '<option value="2">★★☆☆☆ Poor</option>' +
+              '<option value="1">★☆☆☆☆ Bad</option>' +
+            "</select>" +
+          "</div>" +
+          '<textarea name="text" required maxlength="160" rows="2" placeholder="How did it go?"></textarea>' +
+          '<button type="submit" class="btn ghost small">Post review</button>' +
+        "</form>"
+      )
+    : '<p class="muted">Sign in to leave a review.</p>';
+
   return (
     '<div class="engage">' +
       '<button class="like-btn" data-like="' + post.id + '" aria-pressed="' + liked + '">' +
-        '<span aria-hidden="true">' + (liked ? "♥" : "♡") + "</span> " + likeCount +
+        '<span aria-hidden="true">' + (liked ? "♥" : "♡") + "</span> " + likeIds.length +
       "</button>" +
       ratingSummary +
     "</div>" +
     "<details class=\"reviews\">" +
       "<summary>Reviews</summary>" +
       '<ul class="review-list">' + reviewList + "</ul>" +
-      '<form class="review-form" data-review="' + post.id + '">' +
-        '<div class="row">' +
-          '<input name="name" required maxlength="30" placeholder="Your name">' +
-          '<select name="rating" required>' +
-            '<option value="">Rating</option>' +
-            '<option value="5">★★★★★ Excellent</option>' +
-            '<option value="4">★★★★☆ Good</option>' +
-            '<option value="3">★★★☆☆ Okay</option>' +
-            '<option value="2">★★☆☆☆ Poor</option>' +
-            '<option value="1">★☆☆☆☆ Bad</option>' +
-          "</select>" +
-        "</div>" +
-        '<textarea name="text" required maxlength="160" rows="2" placeholder="How did it go?"></textarea>' +
-        '<button type="submit" class="btn ghost small">Post review</button>' +
-      "</form>" +
+      reviewForm +
     "</details>"
+  );
+}
+
+// True when the signed-in visitor posted this listing
+function isOwnPost(post) {
+  return !!(currentUser && post.owner === currentUser.id);
+}
+
+// Builds the "Comments" block: top-level comments, one level of replies under each, and the forms to add more
+function renderComments(post) {
+  var all = commentsByListing[post.id] || [];
+  var topLevel = all.filter(function (c) { return !c.parent_id; });
+
+  var commentName = currentUser
+    ? escapeHtml((profilesById[currentUser.id] && profilesById[currentUser.id].name) || currentUser.email.split("@")[0])
+    : "";
+
+  function renderReplies(commentId) {
+    var replies = all.filter(function (c) { return c.parent_id === commentId; });
+    if (!replies.length) return "";
+
+    return '<ul class="reply-list">' + replies.map(function (reply) {
+      return (
+        '<li class="reply">' +
+          "<b>" + escapeHtml(reply.name) + "</b> " +
+          "<span>" + escapeHtml(reply.text) + "</span>" +
+        "</li>"
+      );
+    }).join("") + "</ul>";
+  }
+
+  var commentList = topLevel.length
+    ? topLevel.map(function (comment) {
+        var replyCount = all.filter(function (c) { return c.parent_id === comment.id; }).length;
+        var replyForm = currentUser
+          ? (
+              '<form class="reply-form" data-listing="' + post.id + '" data-parent="' + comment.id + '">' +
+                '<input name="name" required maxlength="30" placeholder="Your name" value="' + commentName + '">' +
+                '<input name="text" required maxlength="160" placeholder="Write a reply...">' +
+                '<button type="submit" class="btn ghost small">Reply</button>' +
+              "</form>"
+            )
+          : "";
+
+        return (
+          '<li class="comment">' +
+            '<div class="comment-head"><b>' + escapeHtml(comment.name) + "</b></div>" +
+            "<p>" + escapeHtml(comment.text) + "</p>" +
+            "<details class=\"replies\">" +
+              "<summary>" + (replyCount ? replyCount + (replyCount === 1 ? " reply" : " replies") + " · " : "") + "Reply</summary>" +
+              renderReplies(comment.id) +
+              replyForm +
+            "</details>" +
+          "</li>"
+        );
+      }).join("")
+    : '<li class="muted">No comments yet.</li>';
+
+  var commentForm = currentUser
+    ? (
+        '<form class="comment-form" data-listing="' + post.id + '">' +
+          '<input name="name" required maxlength="30" placeholder="Your name" value="' + commentName + '">' +
+          '<input name="text" required maxlength="160" placeholder="Write a comment...">' +
+          '<button type="submit" class="btn ghost small">Comment</button>' +
+        "</form>"
+      )
+    : '<p class="muted">Sign in to leave a comment.</p>';
+
+  return (
+    "<details class=\"comments-block\">" +
+      "<summary>" + (topLevel.length ? topLevel.length + " comments" : "Comments") + "</summary>" +
+      '<ul class="comment-list">' + commentList + "</ul>" +
+      commentForm +
+    "</details>"
+  );
+}
+
+function renderOwnerActions(post) {
+  if (!isOwnPost(post)) return "";
+
+  return (
+    '<div class="owner-actions">' +
+      '<button type="button" class="btn ghost small" data-edit="' + post.id + '">Edit</button>' +
+      '<button type="button" class="btn ghost small danger" data-delete="' + post.id + '">Delete</button>' +
+    "</div>"
   );
 }
 
 function renderCard(post) {
   var label = post.type === "offer" ? "Offering" : "Looking for";
+  var profileBtn =
+    '<button type="button" class="profile-link" data-profile="' + post.owner + '">' +
+      escapeHtml(post.name) +
+    "</button>";
 
   return (
     '<article class="card ' + post.type + '">' +
       '<span class="tag">' + label + " · " + escapeHtml(post.cat) + "</span>" +
       "<h3>" + escapeHtml(post.title) + "</h3>" +
-      "<p>" + escapeHtml(post.desc) + "</p>" +
+      "<p>" + escapeHtml(post.description) + "</p>" +
       '<div class="meta">' +
-        "<span>" + escapeHtml(post.name) + ", " + escapeHtml(post.uni) + "</span>" +
+        "<span>" + profileBtn + ", " + escapeHtml(post.uni) + "</span>" +
         "<b>" + escapeHtml(post.price) + "</b>" +
       "</div>" +
       '<div class="actions">' + renderContactActions(post) + "</div>" +
+      renderOwnerActions(post) +
       renderEngagement(post) +
+      renderComments(post) +
     "</article>"
   );
 }
 
 function renderBoard() {
   var query = filters.q.toLowerCase();
-  var allPosts = posts.concat(SEED); // your posts appear first
 
-  var visible = allPosts.filter(function (post) {
+  var visible = listings.filter(function (post) {
     var matchesType = filters.type === "all" || post.type === filters.type;
     var matchesCategory = filters.cat === "All" || post.cat === filters.cat;
-    var searchable = (post.title + " " + post.desc + " " + post.cat + " " + post.name).toLowerCase();
+    var searchable = (post.title + " " + post.description + " " + post.cat + " " + post.name).toLowerCase();
     var matchesSearch = !query || searchable.indexOf(query) > -1;
 
     return matchesType && matchesCategory && matchesSearch;
@@ -343,10 +508,69 @@ function renderBoard() {
   }
 }
 
+// Fills in the profile page for whichever user id is currently open
+function renderProfileView() {
+  var profile = profilesById[viewingProfileId] || { name: "Unknown student", uni: "", bio: "", avatar: "" };
+  var isMine = !!(currentUser && currentUser.id === viewingProfileId);
+
+  $("#profileAvatar").src = profile.avatar || avatarPlaceholder(profile.name);
+  $("#profileName").textContent = profile.name || "Unknown student";
+  $("#profileUni").textContent = profile.uni || "";
+  $("#profileBio").textContent = profile.bio || (isMine ? "Add a short bio about what you offer or study." : "");
+  $("#editProfileBtn").classList.toggle("is-hidden", !isMine);
+
+  var ownPosts = listings.filter(function (post) {
+    return post.owner === viewingProfileId;
+  });
+
+  $("#profileGrid").innerHTML = ownPosts.length
+    ? ownPosts.map(renderCard).join("")
+    : '<div class="empty">' + (isMine ? "You haven't posted anything yet." : "No posts yet.") + "</div>";
+}
+
+// A simple circular placeholder avatar (first letter of the name) as a data URL,
+// used until someone uploads a real profile picture.
+function avatarPlaceholder(name) {
+  var letter = (name || "?").trim().charAt(0).toUpperCase() || "?";
+  var svg =
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80">' +
+      '<rect width="80" height="80" rx="40" fill="#2F5BFF"/>' +
+      '<text x="40" y="52" font-size="34" font-family="sans-serif" fill="#fff" text-anchor="middle">' + letter + "</text>" +
+    "</svg>";
+  return "data:image/svg+xml," + encodeURIComponent(svg);
+}
+
+// ---------- Routing between the home board and a profile page ----------
+
+function showHome() {
+  viewingProfileId = null;
+  $("#viewHome").classList.remove("is-hidden");
+  $("#viewProfile").classList.add("is-hidden");
+}
+
+function showProfile(userId) {
+  viewingProfileId = userId;
+  $("#viewHome").classList.add("is-hidden");
+  $("#viewProfile").classList.remove("is-hidden");
+  renderProfileView();
+  window.scrollTo(0, 0);
+}
+
+function route() {
+  var match = location.hash.match(/^#\/profile\/(.+)$/);
+  if (match) {
+    showProfile(decodeURIComponent(match[1]));
+  } else {
+    showHome();
+  }
+}
+
+window.addEventListener("hashchange", route);
+
 // ---------- Events ----------
 
 // One click handler for all buttons on the page
-document.addEventListener("click", function (event) {
+document.addEventListener("click", async function (event) {
   var button = event.target.closest("button");
   if (!button) return;
 
@@ -366,39 +590,103 @@ document.addEventListener("click", function (event) {
 
   // Any "Post" / "Offer a service" / "I need something" button
   } else if (button.dataset.post) {
+    if (!currentUser) {
+      showToast("Sign in to post a listing");
+      $("#authDlg").showModal();
+      return;
+    }
     var isOffer = button.dataset.post === "offer";
+    editingId = null;
+    $("#f").reset();
     $("#ft").value = button.dataset.post;
     $("#dt").textContent = isOffer ? "Offer a service" : "Request a service";
+    $("#submitBtn").textContent = "Publish listing";
     $("#dlg").showModal();
+
+  // Edit button on a card you own
+  } else if (button.dataset.edit) {
+    var listing = listings.find(function (post) {
+      return post.id === button.dataset.edit;
+    });
+    if (!listing || !isOwnPost(listing)) return;
+
+    editingId = listing.id;
+    $("#ft").value = listing.type;
+    $("#f").title.value = listing.title;
+    $("#fc").value = listing.cat;
+    $("#f").description.value = listing.description;
+    $("#f").name.value = listing.name;
+    $("#f").uni.value = listing.uni;
+    $("#f").price.value = listing.price;
+    $("#f").contact.value = listing.contact;
+    $("#dt").textContent = "Edit listing";
+    $("#submitBtn").textContent = "Save changes";
+    $("#dlg").showModal();
+
+  // Delete button on a card you own
+  } else if (button.dataset.delete) {
+    var toDelete = listings.find(function (post) {
+      return post.id === button.dataset.delete;
+    });
+    if (!toDelete || !isOwnPost(toDelete)) return;
+    if (!confirm("Delete this listing? This can't be undone.")) return;
+
+    var deleteResult = await supabase.from("listings").delete().eq("id", toDelete.id);
+    if (deleteResult.error) {
+      showToast("Couldn't delete: " + deleteResult.error.message);
+      return;
+    }
+    await loadAll();
+    showToast("Listing deleted");
 
   // Like button on a card
   } else if (button.dataset.like) {
-    var entry = getEntry(button.dataset.like);
-    entry.likedByMe = !entry.likedByMe;
-    saveEngagement();
+    if (!currentUser) {
+      showToast("Sign in to like a listing");
+      $("#authDlg").showModal();
+      return;
+    }
+    var id = button.dataset.like;
+    var likeIds = likesByListing[id] || [];
+    var alreadyLiked = likeIds.indexOf(currentUser.id) > -1;
+
+    if (alreadyLiked) {
+      await supabase.from("likes").delete().eq("listing_id", id).eq("user_id", currentUser.id);
+    } else {
+      await supabase.from("likes").insert({ listing_id: id, user_id: currentUser.id });
+    }
+    await loadLikes();
     renderBoard();
+    if (viewingProfileId) renderProfileView();
+
+  // A poster's name: open their profile page
+  } else if (button.dataset.profile) {
+    location.hash = "#/profile/" + encodeURIComponent(button.dataset.profile);
+
+  // "My profile" button in the header
+  } else if (button.id === "myProfileBtn") {
+    if (currentUser) location.hash = "#/profile/" + encodeURIComponent(currentUser.id);
+
+  // "Edit profile" button on your own profile page
+  } else if (button.id === "editProfileBtn") {
+    var myProfile = profilesById[currentUser.id] || {};
+    $("#profileNameInput").value = myProfile.name || "";
+    $("#profileUniInput").value = myProfile.uni || "";
+    $("#profileBioInput").value = myProfile.bio || "";
+    var preview = $("#avatarPreview");
+    if (myProfile.avatar) {
+      preview.src = myProfile.avatar;
+      preview.classList.remove("is-hidden");
+    } else {
+      preview.classList.add("is-hidden");
+    }
+    $("#avatarInput").value = "";
+    $("#profileDlg").showModal();
+
+  // Cancel the profile-edit dialog
+  } else if (button.id === "profileCancel") {
+    $("#profileDlg").close();
   }
-});
-
-// Posting a review (delegated, since review forms are created dynamically)
-document.addEventListener("submit", function (event) {
-  var form = event.target;
-  if (!form.matches || !form.matches(".review-form")) return;
-
-  event.preventDefault();
-  var data = Object.fromEntries(new FormData(form).entries());
-  if (!data.name.trim() || !data.rating || !data.text.trim()) return;
-
-  var entry = getEntry(form.dataset.review);
-  entry.reviews.push({
-    name: data.name.trim(),
-    rating: Number(data.rating),
-    text: data.text.trim()
-  });
-
-  saveEngagement();
-  renderBoard();
-  showToast("Review posted");
 });
 
 // Live search
@@ -407,17 +695,173 @@ $("#q").addEventListener("input", function (event) {
   renderBoard();
 });
 
-// Close the dialog
+// Close the post dialog
 $("#cancel").addEventListener("click", function () {
+  editingId = null;
   $("#dlg").close();
 });
 
-// Publish a new listing
-$("#f").addEventListener("submit", function (event) {
+// Preview a chosen profile picture, and keep it small enough to store as a data URL
+$("#avatarInput").addEventListener("change", function (event) {
+  var file = event.target.files[0];
+  if (!file) return;
+
+  if (file.size > 600 * 1024) {
+    showToast("Please choose an image under 600KB");
+    event.target.value = "";
+    return;
+  }
+
+  var reader = new FileReader();
+  reader.onload = function () {
+    var preview = $("#avatarPreview");
+    preview.src = reader.result;
+    preview.classList.remove("is-hidden");
+  };
+  reader.readAsDataURL(file);
+});
+
+// Save changes to your own profile
+$("#profileForm").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  if (!currentUser) return;
+
+  var preview = $("#avatarPreview");
+  var avatar = preview.classList.contains("is-hidden")
+    ? (profilesById[currentUser.id] && profilesById[currentUser.id].avatar) || ""
+    : preview.src;
+
+  var result = await supabase.from("profiles").update({
+    name: $("#profileNameInput").value.trim(),
+    uni: $("#profileUniInput").value.trim(),
+    bio: $("#profileBioInput").value.trim(),
+    avatar: avatar
+  }).eq("id", currentUser.id);
+
+  if (result.error) {
+    showToast("Couldn't save profile: " + result.error.message);
+    return;
+  }
+
+  $("#profileDlg").close();
+  await loadProfiles();
+  renderBoard();
+  if (viewingProfileId) renderProfileView();
+  showToast("Profile updated");
+});
+
+// Posting a review (delegated, since review forms are created dynamically)
+document.addEventListener("submit", async function (event) {
+  var form = event.target;
+  if (!form.matches || !form.matches(".review-form")) return;
+
+  event.preventDefault();
+  if (!currentUser) {
+    showToast("Sign in to leave a review");
+    $("#authDlg").showModal();
+    return;
+  }
+
+  var data = Object.fromEntries(new FormData(form).entries());
+  if (!data.name.trim() || !data.rating || !data.text.trim()) return;
+
+  var result = await supabase.from("reviews").insert({
+    listing_id: form.dataset.review,
+    user_id: currentUser.id,
+    name: data.name.trim(),
+    rating: Number(data.rating),
+    text: data.text.trim()
+  });
+
+  if (result.error) {
+    showToast("Couldn't post review: " + result.error.message);
+    return;
+  }
+
+  await loadReviews();
+  renderBoard();
+  showToast("Review posted");
+});
+
+// Posting a top-level comment (delegated, since comment forms are created dynamically)
+document.addEventListener("submit", async function (event) {
+  var form = event.target;
+  if (!form.matches || !form.matches(".comment-form")) return;
+
+  event.preventDefault();
+  if (!currentUser) {
+    showToast("Sign in to leave a comment");
+    $("#authDlg").showModal();
+    return;
+  }
+
+  var data = Object.fromEntries(new FormData(form).entries());
+  if (!data.name.trim() || !data.text.trim()) return;
+
+  var result = await supabase.from("comments").insert({
+    listing_id: form.dataset.listing,
+    user_id: currentUser.id,
+    name: data.name.trim(),
+    text: data.text.trim()
+  });
+
+  if (result.error) {
+    showToast("Couldn't post comment: " + result.error.message);
+    return;
+  }
+
+  await loadComments();
+  renderBoard();
+  if (viewingProfileId) renderProfileView();
+  showToast("Comment posted");
+});
+
+// Posting a reply to a comment (delegated, same reason as above)
+document.addEventListener("submit", async function (event) {
+  var form = event.target;
+  if (!form.matches || !form.matches(".reply-form")) return;
+
+  event.preventDefault();
+  if (!currentUser) {
+    showToast("Sign in to reply");
+    $("#authDlg").showModal();
+    return;
+  }
+
+  var data = Object.fromEntries(new FormData(form).entries());
+  if (!data.name.trim() || !data.text.trim()) return;
+
+  var result = await supabase.from("comments").insert({
+    listing_id: form.dataset.listing,
+    parent_id: form.dataset.parent,
+    user_id: currentUser.id,
+    name: data.name.trim(),
+    text: data.text.trim()
+  });
+
+  if (result.error) {
+    showToast("Couldn't post reply: " + result.error.message);
+    return;
+  }
+
+  await loadComments();
+  renderBoard();
+  if (viewingProfileId) renderProfileView();
+  showToast("Reply posted");
+});
+
+// Publish a new listing, or save changes to one of your own
+$("#f").addEventListener("submit", async function (event) {
   event.preventDefault();
 
+  if (!currentUser) {
+    showToast("Sign in to post a listing");
+    $("#dlg").close();
+    $("#authDlg").showModal();
+    return;
+  }
+
   var listing = Object.fromEntries(new FormData(event.target).entries());
-  listing.id = "p" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 
   // The contact must be an email address or a phone number, so the links work
   if (!isValidContact(listing.contact)) {
@@ -425,19 +869,46 @@ $("#f").addEventListener("submit", function (event) {
     return;
   }
 
-  posts.unshift(listing);
+  var wasEditing = !!editingId;
+  var result;
 
-  // Keep the 30 most recent posts in this browser
-  try {
-    localStorage.setItem("cl_posts", JSON.stringify(posts.slice(0, 30)));
-  } catch (e) {
-    // Storage may be blocked; the listing still shows for this visit
+  if (editingId) {
+    // Saving changes to an existing listing you own
+    result = await supabase.from("listings").update({
+      type: listing.type,
+      cat: listing.cat,
+      title: listing.title,
+      description: listing.description,
+      name: listing.name,
+      uni: listing.uni,
+      price: listing.price,
+      contact: listing.contact
+    }).eq("id", editingId);
+  } else {
+    // Publishing a brand new listing
+    result = await supabase.from("listings").insert({
+      type: listing.type,
+      cat: listing.cat,
+      title: listing.title,
+      description: listing.description,
+      name: listing.name,
+      uni: listing.uni,
+      price: listing.price,
+      contact: listing.contact,
+      owner: currentUser.id
+    });
   }
 
+  if (result.error) {
+    showToast("Couldn't save: " + result.error.message);
+    return;
+  }
+
+  editingId = null;
   $("#dlg").close();
   event.target.reset();
 
-  // Reset filters so the new listing is visible
+  // Reset filters so the listing is visible
   filters = { type: "all", cat: "All", q: "" };
   $("#q").value = "";
   document.querySelectorAll(".seg button").forEach(function (b) {
@@ -445,10 +916,56 @@ $("#f").addEventListener("submit", function (event) {
   });
 
   renderChips();
+  await loadListings();
   renderBoard();
-  showToast("Listing published");
+  showToast(wasEditing ? "Listing updated" : "Listing published");
   location.hash = "#board";
 });
+
+// ---------- Realtime ----------
+// Keeps every visitor's board in sync as other people post, edit, like or review.
+// Requires realtime to be switched on for these tables — see schema.sql.
+
+supabase
+  .channel("public:listings")
+  .on("postgres_changes", { event: "*", schema: "public", table: "listings" }, function () {
+    loadListings().then(function () {
+      renderBoard();
+      if (viewingProfileId) renderProfileView();
+    });
+  })
+  .subscribe();
+
+supabase
+  .channel("public:likes")
+  .on("postgres_changes", { event: "*", schema: "public", table: "likes" }, function () {
+    loadLikes().then(renderBoard);
+  })
+  .subscribe();
+
+supabase
+  .channel("public:reviews")
+  .on("postgres_changes", { event: "*", schema: "public", table: "reviews" }, function () {
+    loadReviews().then(renderBoard);
+  })
+  .subscribe();
+
+supabase
+  .channel("public:comments")
+  .on("postgres_changes", { event: "*", schema: "public", table: "comments" }, function () {
+    loadComments().then(renderBoard);
+  })
+  .subscribe();
+
+supabase
+  .channel("public:profiles")
+  .on("postgres_changes", { event: "*", schema: "public", table: "profiles" }, function () {
+    loadProfiles().then(function () {
+      renderBoard();
+      if (viewingProfileId) renderProfileView();
+    });
+  })
+  .subscribe();
 
 // ---------- Start ----------
 
@@ -458,4 +975,5 @@ $("#fc").innerHTML = CATEGORIES.map(function (category) {
 }).join("");
 
 renderChips();
-renderBoard();
+route();
+loadAll();
