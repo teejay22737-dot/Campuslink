@@ -7,6 +7,12 @@
 
 var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
+// Catches anything that goes wrong outside the explicit error checks below,
+// so a problem always surfaces instead of failing silently.
+window.addEventListener("unhandledrejection", function (event) {
+  console.error("CampusLink unexpected error:", event.reason);
+});
+
 // ---------- Static data ----------
 
 var CATEGORIES = [
@@ -633,7 +639,8 @@ document.addEventListener("click", async function (event) {
 
     var deleteResult = await supabase.from("listings").delete().eq("id", toDelete.id);
     if (deleteResult.error) {
-      showToast("Couldn't delete: " + deleteResult.error.message);
+      console.error("CampusLink delete error:", deleteResult.error);
+    showToast("Couldn't delete: " + deleteResult.error.message);
       return;
     }
     await loadAll();
@@ -739,6 +746,7 @@ $("#profileForm").addEventListener("submit", async function (event) {
   }).eq("id", currentUser.id);
 
   if (result.error) {
+    console.error("CampusLink profile save error:", result.error);
     showToast("Couldn't save profile: " + result.error.message);
     return;
   }
@@ -774,6 +782,7 @@ document.addEventListener("submit", async function (event) {
   });
 
   if (result.error) {
+    console.error("CampusLink review error:", result.error);
     showToast("Couldn't post review: " + result.error.message);
     return;
   }
@@ -806,6 +815,7 @@ document.addEventListener("submit", async function (event) {
   });
 
   if (result.error) {
+    console.error("CampusLink comment error:", result.error);
     showToast("Couldn't post comment: " + result.error.message);
     return;
   }
@@ -840,6 +850,7 @@ document.addEventListener("submit", async function (event) {
   });
 
   if (result.error) {
+    console.error("CampusLink reply error:", result.error);
     showToast("Couldn't post reply: " + result.error.message);
     return;
   }
@@ -900,6 +911,7 @@ $("#f").addEventListener("submit", async function (event) {
   }
 
   if (result.error) {
+    console.error("CampusLink listing save error:", result.error);
     showToast("Couldn't save: " + result.error.message);
     return;
   }
