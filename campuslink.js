@@ -72,19 +72,20 @@ function showToast(message) {
 // ---------- Auth ----------
 
 function updateAuthUI() {
-  var status = $("#authStatus");
   var btn = $("#authBtn");
   var myProfileBtn = $("#myProfileBtn");
+  var navAvatar = $("#navAvatar");
 
   if (currentUser) {
-    status.textContent = currentUser.email;
-    status.classList.remove("is-hidden");
-    btn.textContent = "Sign out";
+    var profile = profilesById[currentUser.id];
+    var name = (profile && profile.name) || currentUser.email.split("@")[0];
+    navAvatar.src = (profile && profile.avatar) || avatarPlaceholder(name);
+    navAvatar.alt = name;
     myProfileBtn.classList.remove("is-hidden");
+    btn.textContent = "Sign out";
   } else {
-    status.classList.add("is-hidden");
-    btn.textContent = "Sign in";
     myProfileBtn.classList.add("is-hidden");
+    btn.textContent = "Sign in";
   }
 }
 
@@ -295,6 +296,7 @@ async function loadProfiles() {
 async function loadAll() {
   await Promise.all([loadListings(), loadLikes(), loadReviews(), loadComments(), loadProfiles()]);
   if (currentUser) await ensureProfile();
+  updateAuthUI();
   renderChips();
   renderBoard();
   if (viewingProfileId) renderProfileView();
@@ -477,8 +479,13 @@ function renderCard(post) {
       escapeHtml(post.name) +
     "</button>";
 
+  var photo = post.image
+    ? '<img class="listing-image" src="' + post.image + '" alt="">'
+    : "";
+
   return (
     '<article class="card ' + post.type + '">' +
+      photo +
       '<span class="tag">' + label + " · " + escapeHtml(post.cat) + "</span>" +
       "<h3>" + escapeHtml(post.title) + "</h3>" +
       "<p>" + escapeHtml(post.description) + "</p>" +
@@ -607,6 +614,8 @@ document.addEventListener("click", async function (event) {
     $("#ft").value = button.dataset.post;
     $("#dt").textContent = isOffer ? "Offer a service" : "Request a service";
     $("#submitBtn").textContent = "Publish listing";
+    $("#listingImageValue").value = "";
+    $("#listingImagePreview").classList.add("is-hidden");
     $("#dlg").showModal();
 
   // Edit button on a card you own
@@ -625,6 +634,14 @@ document.addEventListener("click", async function (event) {
     $("#f").uni.value = listing.uni;
     $("#f").price.value = listing.price;
     $("#f").contact.value = listing.contact;
+    $("#listingImageValue").value = listing.image || "";
+    var editPreview = $("#listingImagePreview");
+    if (listing.image) {
+      editPreview.src = listing.image;
+      editPreview.classList.remove("is-hidden");
+    } else {
+      editPreview.classList.add("is-hidden");
+    }
     $("#dt").textContent = "Edit listing";
     $("#submitBtn").textContent = "Save changes";
     $("#dlg").showModal();
@@ -728,6 +745,47 @@ $("#avatarInput").addEventListener("change", function (event) {
   reader.readAsDataURL(file);
 });
 
+// Shrinks an uploaded image down to a reasonable size and returns it as a data URL,
+// so listing photos don't bloat the database or take forever to load.
+function resizeImageFile(file, maxDimension, quality) {
+  return new Promise(function (resolve, reject) {
+    var reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = function () {
+      var img = new Image();
+      img.onerror = reject;
+      img.onload = function () {
+        var scale = Math.min(1, maxDimension / Math.max(img.width, img.height));
+        var canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Preview and compress a chosen listing photo
+$("#listingImageInput").addEventListener("change", async function (event) {
+  var file = event.target.files[0];
+  if (!file) return;
+
+  var dataUrl = await resizeImageFile(file, 1000, 0.7);
+
+  // If it's still large (a very detailed photo), compress harder rather than reject it
+  if (dataUrl.length > 900 * 1024) {
+    dataUrl = await resizeImageFile(file, 700, 0.5);
+  }
+
+  $("#listingImageValue").value = dataUrl;
+  var preview = $("#listingImagePreview");
+  preview.src = dataUrl;
+  preview.classList.remove("is-hidden");
+});
+
 // Save changes to your own profile
 $("#profileForm").addEventListener("submit", async function (event) {
   event.preventDefault();
@@ -753,6 +811,7 @@ $("#profileForm").addEventListener("submit", async function (event) {
 
   $("#profileDlg").close();
   await loadProfiles();
+  updateAuthUI();
   renderBoard();
   if (viewingProfileId) renderProfileView();
   showToast("Profile updated");
@@ -893,7 +952,8 @@ $("#f").addEventListener("submit", async function (event) {
       name: listing.name,
       uni: listing.uni,
       price: listing.price,
-      contact: listing.contact
+      contact: listing.contact,
+      image: listing.image || ""
     }).eq("id", editingId);
   } else {
     // Publishing a brand new listing
@@ -906,6 +966,7 @@ $("#f").addEventListener("submit", async function (event) {
       uni: listing.uni,
       price: listing.price,
       contact: listing.contact,
+      image: listing.image || "",
       owner: currentUser.id
     });
   }
