@@ -24,10 +24,10 @@
         <a class="hide" href="#board">Browse</a>
         <a class="hide" href="#how">How it works</a>
         <a class="hide" href="#safety">Stay safe</a>
-        <span id="authStatus" class="auth-status is-hidden"></span>
-        <button class="btn ghost is-hidden" id="myProfileBtn">My profile</button>
+        <button type="button" class="nav-avatar is-hidden" id="myProfileBtn" aria-label="My profile">
+          <img id="navAvatar" src="" alt="">
+        </button>
         <button class="btn ghost" id="authBtn">Sign in</button>
-        <button class="btn gold" data-post="offer">Post</button>
       </nav>
     </div>
   </header>
@@ -177,6 +177,13 @@
           <option value="request">Request a service</option>
         </select>
       </label>
+
+      <label>
+        Photo (optional)
+        <input type="file" id="listingImageInput" accept="image/*">
+      </label>
+      <img id="listingImagePreview" class="listing-image-preview is-hidden" alt="">
+      <input type="hidden" name="image" id="listingImageValue">
 
       <label>
         Title
