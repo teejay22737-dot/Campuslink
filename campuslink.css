@@ -703,13 +703,23 @@ details.reviews summary {
   border-color: #C0264A;
 }
 
-/* Sign-in status pill in the header */
-.auth-status {
-  font-size: .85rem;
-  color: #C7D2EE;
-  padding: 6px 10px;
-  border: 1px solid rgba(255,255,255,.25);
-  border-radius: 999px;
+/* Small, fixed-size avatar button in the header — never causes overflow */
+.nav-avatar {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid rgba(255,255,255,.35);
+  border-radius: 50%;
+  background: none;
+  overflow: hidden;
+}
+
+.nav-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
 }
 
 .is-hidden {
@@ -848,4 +858,69 @@ details.comments-block summary {
   background: var(--surface);
   color: var(--ink);
   font: inherit;
+}
+
+/* Listing photos */
+.listing-image {
+  width: calc(100% + 36px);
+  margin: -18px -18px 4px;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 12px 12px 0 0;
+  display: block;
+}
+
+.listing-image-preview {
+  width: 100%;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 10px;
+  margin: -4px 0 2px;
+}
+
+/* ---------- Visual refresh: a calmer, slightly more polished feel ---------- */
+
+.hero {
+  background: linear-gradient(165deg, var(--hero) 0%, #1c2c52 55%, var(--hero) 100%);
+}
+
+.card {
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(20, 33, 61, .05), 0 10px 26px -18px rgba(20, 33, 61, .4);
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 4px 10px rgba(20, 33, 61, .08), 0 18px 34px -16px rgba(20, 33, 61, .45);
+}
+
+.btn {
+  border-radius: 10px;
+  transition: filter .15s ease, transform .08s ease;
+}
+
+.btn:hover {
+  filter: brightness(1.06);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.chip, .seg, .search, .review-form input, .comment-form input, .reply-form input {
+  border-radius: 10px;
+}
+
+dialog {
+  border-radius: 18px;
+}
+
+.pin {
+  border-radius: 14px;
+}
+
+.tag {
+  letter-spacing: .02em;
 }
