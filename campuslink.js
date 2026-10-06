@@ -46,16 +46,6 @@ var profilesById = {};      // { userId: { id, name, uni, bio, avatar } }
 // Which profile page is currently open (from the "#/profile/<id>" URL), or null on the home view
 var viewingProfileId = null;
 
-// Which chat thread is currently open (from the "#/chat/<id>" URL), or null when not in a chat
-var viewingChatId = null;
-
-// Whether this visitor is an admin (loaded once per sign-in; see loadAdminStatus)
-var isAdmin = false;
-
-// Chat data loaded from Supabase
-var conversations = [];          // every conversation this visitor can see
-var messagesByConversation = {}; // { conversationId: [ { id, sender_id, body, created_at }, ... ] }
-
 // ---------- Helpers ----------
 
 function $(selector) {
@@ -85,8 +75,6 @@ function updateAuthUI() {
   var btn = $("#authBtn");
   var myProfileBtn = $("#myProfileBtn");
   var navAvatar = $("#navAvatar");
-  var chatInboxBtn = $("#chatInboxBtn");
-  var adminChatsBtn = $("#adminChatsBtn");
 
   if (currentUser) {
     var profile = profilesById[currentUser.id];
@@ -94,13 +82,9 @@ function updateAuthUI() {
     navAvatar.src = (profile && profile.avatar) || avatarPlaceholder(name);
     navAvatar.alt = name;
     myProfileBtn.classList.remove("is-hidden");
-    chatInboxBtn.classList.remove("is-hidden");
-    adminChatsBtn.classList.toggle("is-hidden", !isAdmin);
     btn.textContent = "Sign out";
   } else {
     myProfileBtn.classList.add("is-hidden");
-    chatInboxBtn.classList.add("is-hidden");
-    adminChatsBtn.classList.add("is-hidden");
     btn.textContent = "Sign in";
   }
 }
@@ -121,52 +105,12 @@ async function ensureProfile() {
   }
 }
 
-// Checks whether the signed-in visitor is listed in the admins table
-async function loadAdminStatus() {
-  if (!currentUser) {
-    isAdmin = false;
-    return;
-  }
-  var result = await supabase.from("admins").select("user_id").eq("user_id", currentUser.id).maybeSingle();
-  isAdmin = !!(result.data);
-}
-
-// True if this page load is the browser landing here from the "Confirm your
-// signup" link in an email. Checked once, before Supabase's client strips
-// these details out of the URL.
-var cameFromSignupConfirmation = /type=signup/.test(location.hash) || /type=signup/.test(location.search);
-
 supabase.auth.onAuthStateChange(async function (event, session) {
   currentUser = session ? session.user : null;
   updateAuthUI();
-  if (currentUser) {
-    await ensureProfile();
-    await loadAdminStatus();
-    updateAuthUI();
-  } else {
-    isAdmin = false;
-  }
+  if (currentUser) await ensureProfile();
   renderBoard();
   if (viewingProfileId) renderProfileView();
-
-  // A password-reset link was just opened: prompt for a new password
-  if (event === "PASSWORD_RECOVERY") {
-    $("#resetMsg").textContent = "";
-    $("#resetDlg").showModal();
-  }
-
-  // They just clicked the "Confirm your email" link: welcome them straight
-  // in if that signed them in automatically, or open sign-in if not.
-  if (cameFromSignupConfirmation) {
-    cameFromSignupConfirmation = false;
-    history.replaceState(null, "", location.pathname + location.search);
-    if (currentUser) {
-      showToast("Email confirmed — you're signed in!");
-    } else {
-      $("#authMsg").textContent = "Your email is confirmed. Sign in below to continue.";
-      $("#authDlg").showModal();
-    }
-  }
 });
 
 $("#authBtn").addEventListener("click", async function () {
@@ -213,11 +157,7 @@ $("#authSignUp").addEventListener("click", async function () {
   }
 
   $("#authMsg").textContent = "Creating account...";
-  var result = await supabase.auth.signUp({
-    email: email,
-    password: password,
-    options: { emailRedirectTo: window.location.href.split("#")[0] }
-  });
+  var result = await supabase.auth.signUp({ email: email, password: password });
 
   if (result.error) {
     $("#authMsg").textContent = result.error.message;
@@ -227,43 +167,6 @@ $("#authSignUp").addEventListener("click", async function () {
   // Depending on your Supabase project's auth settings, the visitor may need
   // to confirm their email before signInWithPassword will work for them.
   $("#authMsg").textContent = "Account created. Check your email to confirm it, then sign in.";
-});
-
-// Sends a password-reset email. Clicking the link in that email brings the
-// visitor back here and triggers the PASSWORD_RECOVERY event handled above.
-$("#forgotPasswordBtn").addEventListener("click", async function () {
-  var email = $("#authEmail").value.trim();
-  if (!email) {
-    $("#authMsg").textContent = "Enter your email above first, then click this again.";
-    return;
-  }
-
-  $("#authMsg").textContent = "Sending a reset link...";
-  var result = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: window.location.href.split("#")[0]
-  });
-
-  $("#authMsg").textContent = result.error
-    ? result.error.message
-    : "Check your email for a link to reset your password.";
-});
-
-// Saving a new password after opening a reset link
-$("#resetForm").addEventListener("submit", async function (event) {
-  event.preventDefault();
-  var password = $("#newPassword").value;
-
-  $("#resetMsg").textContent = "Saving...";
-  var result = await supabase.auth.updateUser({ password: password });
-
-  if (result.error) {
-    $("#resetMsg").textContent = result.error.message;
-    return;
-  }
-
-  $("#resetDlg").close();
-  $("#resetForm").reset();
-  showToast("Password updated. You're signed in.");
 });
 
 // ---------- Contact links ----------
@@ -391,14 +294,12 @@ async function loadProfiles() {
 }
 
 async function loadAll() {
-  await Promise.all([loadListings(), loadLikes(), loadReviews(), loadComments(), loadProfiles(), loadConversations()]);
+  await Promise.all([loadListings(), loadLikes(), loadReviews(), loadComments(), loadProfiles()]);
   if (currentUser) await ensureProfile();
   updateAuthUI();
   renderChips();
   renderBoard();
   if (viewingProfileId) renderProfileView();
-  if (location.hash === "#/chat") renderInbox(false);
-  if (location.hash === "#/admin-chats") renderInbox(true);
 }
 
 // ---------- Rendering ----------
@@ -560,19 +461,6 @@ function renderComments(post) {
   );
 }
 
-// A "Chat" button that starts (or opens) a conversation with the poster.
-// Hidden on your own listings, since you can't chat with yourself.
-function renderChatAction(post) {
-  if (isOwnPost(post)) return "";
-  return (
-    '<div class="actions">' +
-      '<button type="button" class="btn" data-chat-with="' + post.owner + '">Chat with ' +
-        escapeHtml(post.name.split(" ")[0]) +
-      "</button>" +
-    "</div>"
-  );
-}
-
 function renderOwnerActions(post) {
   if (!isOwnPost(post)) return "";
 
@@ -605,7 +493,7 @@ function renderCard(post) {
         "<span>" + profileBtn + ", " + escapeHtml(post.uni) + "</span>" +
         "<b>" + escapeHtml(post.price) + "</b>" +
       "</div>" +
-      renderChatAction(post) +
+      '<div class="actions">' + renderContactActions(post) + "</div>" +
       renderOwnerActions(post) +
       renderEngagement(post) +
       renderComments(post) +
@@ -665,205 +553,26 @@ function avatarPlaceholder(name) {
   return "data:image/svg+xml," + encodeURIComponent(svg);
 }
 
-// ---------- Chat ----------
-
-// Given a conversation row, returns the *other* person's id (not the current visitor's)
-function otherParticipant(conversation) {
-  if (!currentUser) return conversation.participant_1;
-  return conversation.participant_1 === currentUser.id
-    ? conversation.participant_2
-    : conversation.participant_1;
-}
-
-async function loadConversations() {
-  var result = await supabase
-    .from("conversations")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (result.error) {
-    showToast("Couldn't load messages");
-    return;
-  }
-  conversations = result.data;
-}
-
-async function loadMessages(conversationId) {
-  var result = await supabase
-    .from("messages")
-    .select("*")
-    .eq("conversation_id", conversationId)
-    .order("created_at", { ascending: true });
-
-  if (result.error) {
-    showToast("Couldn't load this chat");
-    return;
-  }
-  messagesByConversation[conversationId] = result.data;
-}
-
-// Finds the existing conversation with this person, or starts a new one
-async function findOrCreateConversation(otherUserId) {
-  var lower = currentUser.id < otherUserId ? currentUser.id : otherUserId;
-  var higher = currentUser.id < otherUserId ? otherUserId : currentUser.id;
-
-  var existing = conversations.find(function (c) {
-    return c.participant_1 === lower && c.participant_2 === higher;
-  });
-  if (existing) return existing.id;
-
-  var result = await supabase
-    .from("conversations")
-    .insert({ participant_1: lower, participant_2: higher })
-    .select();
-
-  if (result.error) {
-    showToast("Couldn't start chat: " + result.error.message);
-    return null;
-  }
-
-  conversations.unshift(result.data[0]);
-  return result.data[0].id;
-}
-
-function renderInbox(adminMode) {
-  var list = adminMode
-    ? conversations
-    : conversations.filter(function (c) {
-        return currentUser && (c.participant_1 === currentUser.id || c.participant_2 === currentUser.id);
-      });
-
-  if (!list.length) {
-    $("#inboxList").innerHTML = '<li class="empty">No conversations yet.</li>';
-    return;
-  }
-
-  $("#inboxList").innerHTML = list.map(function (conversation) {
-    if (adminMode) {
-      var p1 = profilesById[conversation.participant_1];
-      var p2 = profilesById[conversation.participant_2];
-      var label = (p1 ? p1.name : "Unknown") + " ↔ " + (p2 ? p2.name : "Unknown");
-      return (
-        '<li><button type="button" class="inbox-row" data-open-chat="' + conversation.id + '">' +
-          "<div><b>" + escapeHtml(label) + "</b><span class=\"muted\">Tap to view (read-only)</span></div>" +
-        "</button></li>"
-      );
-    }
-
-    var otherId = otherParticipant(conversation);
-    var otherProfile = profilesById[otherId];
-    var name = (otherProfile && otherProfile.name) || "Unknown student";
-    var avatar = (otherProfile && otherProfile.avatar) || avatarPlaceholder(name);
-
-    return (
-      '<li><button type="button" class="inbox-row" data-open-chat="' + conversation.id + '">' +
-        '<img class="avatar" src="' + avatar + '" alt="">' +
-        "<div><b>" + escapeHtml(name) + "</b></div>" +
-      "</button></li>"
-    );
-  }).join("");
-}
-
-function renderChatThread() {
-  var conversation = conversations.find(function (c) { return c.id === viewingChatId; });
-  if (!conversation) {
-    $("#chatWithName").textContent = "Conversation";
-    $("#chatMessages").innerHTML = '<p class="empty">Conversation not found.</p>';
-    $("#chatForm").classList.add("is-hidden");
-    return;
-  }
-
-  var iAmParticipant = !!(currentUser &&
-    (conversation.participant_1 === currentUser.id || conversation.participant_2 === currentUser.id));
-
-  var otherId = otherParticipant(conversation);
-  var otherProfile = profilesById[otherId];
-  $("#chatWithName").textContent = iAmParticipant
-    ? "Chat with " + ((otherProfile && otherProfile.name) || "Unknown student")
-    : "Conversation (admin view)";
-
-  $("#chatAdminNotice").classList.toggle("is-hidden", iAmParticipant);
-  $("#chatForm").classList.toggle("is-hidden", !iAmParticipant);
-
-  var messages = messagesByConversation[viewingChatId] || [];
-  var box = $("#chatMessages");
-
-  box.innerHTML = messages.length
-    ? messages.map(function (message) {
-        var senderProfile = profilesById[message.sender_id];
-        var senderName = (senderProfile && senderProfile.name) || "Unknown";
-        var mine = currentUser && message.sender_id === currentUser.id;
-        return (
-          '<div class="chat-bubble' + (mine ? " mine" : "") + '">' +
-            (iAmParticipant ? "" : "<b>" + escapeHtml(senderName) + ":</b> ") +
-            escapeHtml(message.body) +
-          "</div>"
-        );
-      }).join("")
-    : '<p class="empty">No messages yet. Say hello.</p>';
-
-  box.scrollTop = box.scrollHeight;
-}
-
-// ---------- Routing between the home board, a profile page, and chat ----------
-
-var ALL_VIEWS = ["#viewHome", "#viewProfile", "#viewInbox", "#viewChat"];
-
-function hideAllViews() {
-  ALL_VIEWS.forEach(function (id) {
-    $(id).classList.add("is-hidden");
-  });
-}
+// ---------- Routing between the home board and a profile page ----------
 
 function showHome() {
   viewingProfileId = null;
-  viewingChatId = null;
-  hideAllViews();
   $("#viewHome").classList.remove("is-hidden");
+  $("#viewProfile").classList.add("is-hidden");
 }
 
 function showProfile(userId) {
   viewingProfileId = userId;
-  viewingChatId = null;
-  hideAllViews();
+  $("#viewHome").classList.add("is-hidden");
   $("#viewProfile").classList.remove("is-hidden");
   renderProfileView();
   window.scrollTo(0, 0);
 }
 
-function showInbox(adminMode) {
-  viewingProfileId = null;
-  viewingChatId = null;
-  hideAllViews();
-  $("#viewInbox").classList.remove("is-hidden");
-  $("#inboxTitle").textContent = adminMode ? "All chats (admin view)" : "Messages";
-  renderInbox(adminMode);
-  window.scrollTo(0, 0);
-}
-
-async function showChat(conversationId) {
-  viewingProfileId = null;
-  viewingChatId = conversationId;
-  hideAllViews();
-  $("#viewChat").classList.remove("is-hidden");
-  await loadMessages(conversationId);
-  renderChatThread();
-  window.scrollTo(0, 0);
-}
-
 function route() {
-  var hash = location.hash;
-  var profileMatch = hash.match(/^#\/profile\/(.+)$/);
-  var chatMatch = hash.match(/^#\/chat\/(.+)$/);
-
-  if (profileMatch) {
-    showProfile(decodeURIComponent(profileMatch[1]));
-  } else if (chatMatch) {
-    showChat(decodeURIComponent(chatMatch[1]));
-  } else if (hash === "#/chat") {
-    showInbox(false);
-  } else if (hash === "#/admin-chats") {
-    showInbox(true);
+  var match = location.hash.match(/^#\/profile\/(.+)$/);
+  if (match) {
+    showProfile(decodeURIComponent(match[1]));
   } else {
     showHome();
   }
@@ -1001,28 +710,6 @@ document.addEventListener("click", async function (event) {
   // Cancel the profile-edit dialog
   } else if (button.id === "profileCancel") {
     $("#profileDlg").close();
-
-  // "Chat with ..." button on a listing card
-  } else if (button.dataset.chatWith) {
-    if (!currentUser) {
-      showToast("Sign in to chat");
-      $("#authDlg").showModal();
-      return;
-    }
-    var chatTargetId = await findOrCreateConversation(button.dataset.chatWith);
-    if (chatTargetId) location.hash = "#/chat/" + encodeURIComponent(chatTargetId);
-
-  // A row in the chat inbox
-  } else if (button.dataset.openChat) {
-    location.hash = "#/chat/" + encodeURIComponent(button.dataset.openChat);
-
-  // "Messages" button in the header
-  } else if (button.id === "chatInboxBtn") {
-    location.hash = "#/chat";
-
-  // "All chats" (admin) button in the header
-  } else if (button.id === "adminChatsBtn") {
-    location.hash = "#/admin-chats";
   }
 });
 
@@ -1233,32 +920,6 @@ document.addEventListener("submit", async function (event) {
   showToast("Reply posted");
 });
 
-// Sending a chat message
-$("#chatForm").addEventListener("submit", async function (event) {
-  event.preventDefault();
-  if (!currentUser || !viewingChatId) return;
-
-  var input = $("#chatInput");
-  var body = input.value.trim();
-  if (!body) return;
-
-  var result = await supabase.from("messages").insert({
-    conversation_id: viewingChatId,
-    sender_id: currentUser.id,
-    body: body
-  });
-
-  if (result.error) {
-    console.error("CampusLink chat send error:", result.error);
-    showToast("Couldn't send: " + result.error.message);
-    return;
-  }
-
-  input.value = "";
-  await loadMessages(viewingChatId);
-  renderChatThread();
-});
-
 // Publish a new listing, or save changes to one of your own
 $("#f").addEventListener("submit", async function (event) {
   event.preventDefault();
@@ -1272,10 +933,9 @@ $("#f").addEventListener("submit", async function (event) {
 
   var listing = Object.fromEntries(new FormData(event.target).entries());
 
-  // Contact is optional now that chat exists, but if they entered one, it
-  // should be a real phone number or email so it'd actually be usable
-  if (listing.contact && !isValidContact(listing.contact)) {
-    showToast("That doesn't look like a valid phone number or email — you can also just leave it blank");
+  // The contact must be an email address or a phone number, so the links work
+  if (!isValidContact(listing.contact)) {
+    showToast("Enter a valid phone number or email address");
     return;
   }
 
@@ -1377,26 +1037,6 @@ supabase
       renderBoard();
       if (viewingProfileId) renderProfileView();
     });
-  })
-  .subscribe();
-
-supabase
-  .channel("public:conversations")
-  .on("postgres_changes", { event: "*", schema: "public", table: "conversations" }, function () {
-    loadConversations().then(function () {
-      if (location.hash === "#/chat") renderInbox(false);
-      if (location.hash === "#/admin-chats") renderInbox(true);
-    });
-  })
-  .subscribe();
-
-supabase
-  .channel("public:messages")
-  .on("postgres_changes", { event: "*", schema: "public", table: "messages" }, function (payload) {
-    var row = payload.new || payload.old;
-    if (row && row.conversation_id === viewingChatId) {
-      loadMessages(viewingChatId).then(renderChatThread);
-    }
   })
   .subscribe();
 
