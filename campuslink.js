@@ -105,12 +105,39 @@ async function ensureProfile() {
   }
 }
 
+// True if this page load is the browser landing here from the "Confirm your
+// signup" link in an email. Checked once, before Supabase's client strips
+// these details out of the URL.
+var cameFromSignupConfirmation = /type=signup/.test(location.hash) || /type=signup/.test(location.search);
+
 supabase.auth.onAuthStateChange(async function (event, session) {
   currentUser = session ? session.user : null;
   updateAuthUI();
-  if (currentUser) await ensureProfile();
+  if (currentUser) {
+    await ensureProfile();
+    updateAuthUI();
+  }
   renderBoard();
   if (viewingProfileId) renderProfileView();
+
+  // A password-reset link was just opened: prompt for a new password
+  if (event === "PASSWORD_RECOVERY") {
+    $("#resetMsg").textContent = "";
+    $("#resetDlg").showModal();
+  }
+
+  // They just clicked the "Confirm your email" link: welcome them straight
+  // in if that signed them in automatically, or open sign-in if not.
+  if (cameFromSignupConfirmation) {
+    cameFromSignupConfirmation = false;
+    history.replaceState(null, "", location.pathname + location.search);
+    if (currentUser) {
+      showToast("Email confirmed — you're signed in!");
+    } else {
+      $("#authMsg").textContent = "Your email is confirmed. Sign in below to continue.";
+      $("#authDlg").showModal();
+    }
+  }
 });
 
 $("#authBtn").addEventListener("click", async function () {
@@ -157,7 +184,11 @@ $("#authSignUp").addEventListener("click", async function () {
   }
 
   $("#authMsg").textContent = "Creating account...";
-  var result = await supabase.auth.signUp({ email: email, password: password });
+  var result = await supabase.auth.signUp({
+    email: email,
+    password: password,
+    options: { emailRedirectTo: window.location.href.split("#")[0] }
+  });
 
   if (result.error) {
     $("#authMsg").textContent = result.error.message;
@@ -167,6 +198,43 @@ $("#authSignUp").addEventListener("click", async function () {
   // Depending on your Supabase project's auth settings, the visitor may need
   // to confirm their email before signInWithPassword will work for them.
   $("#authMsg").textContent = "Account created. Check your email to confirm it, then sign in.";
+});
+
+// Sends a password-reset email. Clicking the link in that email brings the
+// visitor back here and triggers the PASSWORD_RECOVERY event handled above.
+$("#forgotPasswordBtn").addEventListener("click", async function () {
+  var email = $("#authEmail").value.trim();
+  if (!email) {
+    $("#authMsg").textContent = "Enter your email above first, then click this again.";
+    return;
+  }
+
+  $("#authMsg").textContent = "Sending a reset link...";
+  var result = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: window.location.href.split("#")[0]
+  });
+
+  $("#authMsg").textContent = result.error
+    ? result.error.message
+    : "Check your email for a link to reset your password.";
+});
+
+// Saving a new password after opening a reset link
+$("#resetForm").addEventListener("submit", async function (event) {
+  event.preventDefault();
+  var password = $("#newPassword").value;
+
+  $("#resetMsg").textContent = "Saving...";
+  var result = await supabase.auth.updateUser({ password: password });
+
+  if (result.error) {
+    $("#resetMsg").textContent = result.error.message;
+    return;
+  }
+
+  $("#resetDlg").close();
+  $("#resetForm").reset();
+  showToast("Password updated. You're signed in.");
 });
 
 // ---------- Contact links ----------
