@@ -159,8 +159,9 @@
     <div class="wrap">
       <div>
         <a class="logo" href="#top">Campus<span>Link</span></a>
-        <p>Built by a student, for students.</p>
+        <p>Built by students, for students.</p>
       </div>
+      <p>Post a service, follow it up in your profile, and everyone sees the same board.</p>
     </div>
   </footer>
 
@@ -275,11 +276,27 @@
       </label>
 
       <p id="authMsg" class="muted"></p>
+      <button type="button" class="link-btn" id="forgotPasswordBtn">Forgot password?</button>
 
       <div class="acts">
         <button type="button" class="btn ghost" id="authCancel">Cancel</button>
         <button type="button" class="btn ghost" id="authSignUp">Create account</button>
         <button type="submit" class="btn" id="authSignIn">Sign in</button>
+      </div>
+    </form>
+  </dialog>
+
+  <!-- ===== Set a new password (opens automatically from the emailed reset link) ===== -->
+  <dialog id="resetDlg" aria-label="Set a new password">
+    <form id="resetForm">
+      <h2>Set a new password</h2>
+      <label>
+        New password
+        <input type="password" id="newPassword" required minlength="6" placeholder="At least 6 characters">
+      </label>
+      <p id="resetMsg" class="muted"></p>
+      <div class="acts">
+        <button type="submit" class="btn">Save password</button>
       </div>
     </form>
   </dialog>
